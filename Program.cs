@@ -38,11 +38,13 @@ public class Program
             if (jsonConfig == null) throw new SerializationException("Unable to read config.json");
             await Client.LoginAsync(TokenType.Bot, jsonConfig.Token);
             await Client.StartAsync();
+
+            
         }
         catch (System.Exception e)
         {
-            Log(new LogMessage(LogSeverity.Error, "Main", e.Message));
-            throw e;
+            await Log(new LogMessage(LogSeverity.Error, "Main", e.Message));
+            throw;
         }
         
         
@@ -62,6 +64,7 @@ public class Program
     
     private static async Task OnReady()
     {
+        await ServerData.LoadAll();
         await Log(new LogMessage(LogSeverity.Info, "OnReady", "Initialising commands..."));
        
         foreach (var guild in Client.Guilds)

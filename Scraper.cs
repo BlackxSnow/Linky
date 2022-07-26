@@ -143,19 +143,30 @@ public static class Scraper
             {
                 await userMessage.ModifyAsync(msg => msg.Embeds = embeds);
                 if (command!=null) await command.RespondAsync("Successfully fetched and updated existing post.", ephemeral: true);
+                config.LastUpdate = DateTime.Now;
+                await ServerData.Save(guild.Id);
                 return;
             }
             if (command != null) await command.RespondAsync("Warning: stored message ID cannot be found or is invalid type.");
         }
         
         config.LinkMessageID = (await channel.SendMessageAsync(embeds: embeds)).Id;
+        config.LastUpdate = DateTime.Now;
         await ServerData.Save(guild.Id);
         if (command != null) await command.RespondAsync("Successfully fetched and created new post.", ephemeral: true);
     }
     
     public static async Task Update(SocketSlashCommand command)
     {
-        await UpdateLinkPost((command.Channel as SocketGuildChannel)!.Guild, true, command);
+        var guild = (command.Channel as SocketGuildChannel)!.Guild;
+        await UpdateLinkPost(guild, true, command);
+        var data = ServerData.Get(guild.Id);
+        data.ResetTimer();
+    }
+
+    public static async Task Update(ulong guildID)
+    {
+        await UpdateLinkPost(Program.Client!.GetGuild(guildID), false);
     }
     
     
