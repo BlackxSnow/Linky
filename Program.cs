@@ -17,22 +17,33 @@ public class Program
 
     private static async Task MainAsync()
     {
-        await Log(new LogMessage(LogSeverity.Info, "Main", "Connecting to Google Drive..."));
-        Scraper.InitialiseGoogle();
-        
-        Client = new DiscordSocketClient();
-        
-        Client.Log += Log;
-        Client.Ready += OnReady;
-        Client.JoinedGuild += OnJoin;
+        try 
+        {
+            Directory.CreateDirectory("./log");
+            if (File.Exists("./log/session-old.log")) File.Delete("./log/session-old.log");
+            if (File.Exists("./log/session.log")) File.Move("./log/session.log", "./log/session-old.log");
+            
+            await Log(new LogMessage(LogSeverity.Info, "Main", "Connecting to Google Drive..."));
+            Scraper.InitialiseGoogle();
+            
+            Client = new DiscordSocketClient();
+            
+            Client.Log += Log;
+            Client.Ready += OnReady;
+            Client.JoinedGuild += OnJoin;
 
-        var configStream = File.OpenRead("config.json");
-        var jsonConfig = (JSONConfig?)(await JsonSerializer.DeserializeAsync(configStream, typeof(JSONConfig)));
-        configStream.Close();
-        if (jsonConfig == null) throw new SerializationException("Unable to read config.json");
-        await Client.LoginAsync(TokenType.Bot, jsonConfig.Token);
-        await Client.StartAsync();
-
+            var configStream = File.OpenRead("config.json");
+            var jsonConfig = (JSONConfig?)(await JsonSerializer.DeserializeAsync(configStream, typeof(JSONConfig)));
+            configStream.Close();
+            if (jsonConfig == null) throw new SerializationException("Unable to read config.json");
+            await Client.LoginAsync(TokenType.Bot, jsonConfig.Token);
+            await Client.StartAsync();
+        }
+        catch (System.Exception e)
+        {
+            Log(new LogMessage(LogSeverity.Error, "Main", e.Message));
+            throw e;
+        }
         
         
         await Task.Delay(-1);
@@ -68,6 +79,8 @@ public class Program
     public static Task Log(LogMessage message)
     {
         Console.WriteLine(message.ToString());
+        using StreamWriter stream = new("log/session.log", true);
+        stream.WriteLine(message.ToString());
         return Task.CompletedTask;
     }
 }

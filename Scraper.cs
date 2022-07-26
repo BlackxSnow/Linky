@@ -14,7 +14,7 @@ public static class Scraper
 {
     private static readonly string[] _Scopes = { DriveService.Scope.DriveReadonly };
     private const string _ApplicationName = "LinkyDiscord";
-    private const string _CredentialPath = "token.json";
+    private const string _CredentialPath = "./token";
 
     private static DriveService? _DriveService;
 
@@ -31,7 +31,7 @@ public static class Scraper
     public static void InitialiseGoogle()
     {
         UserCredential credentials;
-        using (var stream = new FileStream("credentials.json", FileMode.Open, FileAccess.Read))
+        using (var stream = new FileStream("./credentials.json", FileMode.Open, FileAccess.Read))
         {
             var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
             var dataStore = new FileDataStore(_CredentialPath, true);
@@ -130,7 +130,8 @@ public static class Scraper
                 Color = Color.Purple,
                 Description = description.ToString(),
                 Url = data.DriveFolder?.WebViewLink,
-                Footer = new EmbedFooterBuilder() {Text = $"Last updated: {DateTime.Now} ({(isManual ? "Manual" : "Automatic")})"}
+                Timestamp = new DateTimeOffset(DateTime.Now),
+                Footer = new EmbedFooterBuilder() {Text = $"Last Update: ({(isManual ? "Manual" : "Automatic")})"}
             }.Build();
             i++;
         }

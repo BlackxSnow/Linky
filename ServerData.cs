@@ -82,7 +82,7 @@ public class ServerData
     public static ServerData Get(ulong guildID)
     {
         if (_LoadedGuilds.TryGetValue(guildID, out var data)) return data;
-        var dataFile = $"data/{guildID}.json";
+        var dataFile = $"./data/{guildID}.json";
         if (File.Exists(dataFile))
         {
             using (var stream = File.OpenRead(dataFile))
@@ -105,7 +105,7 @@ public class ServerData
             Program.Log(new LogMessage(LogSeverity.Error, "ServerData", $"Attempted to save id {guildID} with no data in memory."));
             return;
         }
-        var dataFile = $"data/{guildID}.json";
+        var dataFile = $"./data/{guildID}.json";
         Directory.CreateDirectory("data");
         await using var stream = File.OpenWrite(dataFile);
         await JsonSerializer.SerializeAsync(stream, data);
