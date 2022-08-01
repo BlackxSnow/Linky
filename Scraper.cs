@@ -2,9 +2,11 @@ using System.Text;
 using Discord;
 using Discord.WebSocket;
 using Google.Apis.Auth.OAuth2;
+using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Services;
+using Google.Apis.Util;
 using Google.Apis.Util.Store;
 using File = Google.Apis.Drive.v3.Data.File;
 
@@ -17,6 +19,7 @@ public static class Scraper
     private const string _CredentialPath = "./token";
 
     private static DriveService? _DriveService;
+    private static UserCredential? _Credentials;
 
     private const string _DriveRootID = "1LkNGhmicF684l6ggVcJdmgbzy8CmnDB9";
     private const string _DriveRootLink = $"https://drive.google.com/drive/u/0/folders/{_DriveRootID}";
@@ -30,28 +33,30 @@ public static class Scraper
     
     public static void InitialiseGoogle()
     {
-        UserCredential credentials;
         using (var stream = new FileStream("./credentials.json", FileMode.Open, FileAccess.Read))
         {
             var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
             var dataStore = new FileDataStore(_CredentialPath, true);
-            credentials = GoogleWebAuthorizationBroker.AuthorizeAsync(
+            _Credentials = GoogleWebAuthorizationBroker.AuthorizeAsync(
                 secrets,
                 _Scopes,
                 "user",
                 CancellationToken.None,
                 dataStore).Result;
         }
+        
         Console.WriteLine("Starting service...");
+        
         _DriveService = new DriveService(new BaseClientService.Initializer()
         {
-            HttpClientInitializer = credentials,
+            HttpClientInitializer = _Credentials,
             ApplicationName = _ApplicationName
         });
     }
 
     private static async Task ExploreDriveDirectory(Dictionary<string, Folder> filesByFolder, File parentDir)
     {
+        
         var request = _DriveService.Files.List();
         request.Q = $"'{parentDir.Id}' in parents";
         request.Fields = "files(name,webViewLink,mimeType,id)";

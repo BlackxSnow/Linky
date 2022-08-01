@@ -168,7 +168,7 @@ public class ServerData
         }
         var dataFile = $"./data/{guildID}.json";
         Directory.CreateDirectory("data");
-        await using var stream = File.OpenWrite(dataFile);
+        await using var stream = File.Open(dataFile, FileMode.Create, FileAccess.Write);
         await JsonSerializer.SerializeAsync(stream, data);
     }
 }
