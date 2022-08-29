@@ -13,8 +13,10 @@ public class ServerData
     public ulong GuildID { get; set; }
     public ulong? TargetChannel { get; set; }
     public ulong? LinkMessageID { get; set; }
+    public List<ulong> LinkMessageIDs { get; set; }
     public List<string> CommandChannels { get; set; }
-    public List<CustomLink> Links { get; set; }
+    public List<CustomLink>? Links { get; set; }
+    public List<IgnorePattern>? IgnorePatterns { get; set; }
     public DateTime LastUpdate { get; set; }
     
     [NonSerialized] private Timer _UpdateTimer;
@@ -132,7 +134,7 @@ public class ServerData
             ServerData data;
             await using (var stream = File.OpenRead(file))
             {
-                data = JsonSerializer.Deserialize<ServerData>(stream)!;
+                data = JsonSerializer.Deserialize<ServerData>(stream, new JsonSerializerOptions() {Converters = { new IgnorePattern.JsonConverter() }})!;
                 _LoadedGuilds.Add(id, data);
             }
             await data.Initialise(id);
@@ -148,7 +150,7 @@ public class ServerData
         {
             using (var stream = File.OpenRead(dataFile))
             {
-                data = JsonSerializer.Deserialize<ServerData>(stream)!;
+                data = JsonSerializer.Deserialize<ServerData>(stream, new JsonSerializerOptions() {Converters = { new IgnorePattern.JsonConverter() }})!;
             }
             _LoadedGuilds.Add(guildID, data);
             return data;
@@ -169,6 +171,6 @@ public class ServerData
         var dataFile = $"./data/{guildID}.json";
         Directory.CreateDirectory("data");
         await using var stream = File.Open(dataFile, FileMode.Create, FileAccess.Write);
-        await JsonSerializer.SerializeAsync(stream, data);
+        await JsonSerializer.SerializeAsync(stream, data, new JsonSerializerOptions() {Converters = { new IgnorePattern.JsonConverter() }});
     }
 }

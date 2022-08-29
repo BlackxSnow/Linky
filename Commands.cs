@@ -155,4 +155,46 @@ public static class Commands
             }
         }
     };
+    
+        private static CommandBuilder _Ignore = new CommandBuilder()
+    {
+        Name = "ignore",
+        Description = "Add or remove ignore regex patterns.",
+        IsDMEnabled = false,
+        OnExecute = IgnorePattern.ModifyPattern,
+        Options = new List<SlashCommandOptionBuilder>()
+        {
+            new()
+            {
+                Name = "add",
+                Description = "Add a new regex ignore pattern.",
+                Type = ApplicationCommandOptionType.SubCommand,
+                Options = new List<SlashCommandOptionBuilder>()
+                {
+                    new SlashCommandOptionBuilder()
+                    {
+                        Name = "pattern",
+                        Description = "Regex pattern to ignore.",
+                        Type = ApplicationCommandOptionType.String,
+                        IsRequired = true
+                    }
+                }
+            },
+            new()
+            {
+                Name = "remove",
+                Description = "Remove an existing ignore pattern.",
+                Type = ApplicationCommandOptionType.SubCommand,
+                Options = new List<SlashCommandOptionBuilder>()
+                {
+                    new SlashCommandOptionBuilder()
+                    {
+                        Name = "pattern",
+                        Description = "Pattern to remove.",
+                        Type = ApplicationCommandOptionType.String
+                    }
+                }
+            }
+        }
+    };
 }

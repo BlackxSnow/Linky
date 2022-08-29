@@ -27,7 +27,7 @@ public static class Scraper
 
     private class Folder
     {
-        public File? DriveFolder;
+        public DriveFileEntry? DriveFolder;
         public List<File> Files = new();
     }
     
@@ -54,38 +54,41 @@ public static class Scraper
         });
     }
 
-    private static async Task ExploreDriveDirectory(Dictionary<string, Folder> filesByFolder, File parentDir)
+    private static async Task ExploreDriveDirectory(Dictionary<string, Folder> filesByFolder, DriveFileEntry parentDir, ServerData config)
     {
         
-        var request = _DriveService.Files.List();
-        request.Q = $"'{parentDir.Id}' in parents";
+        FilesResource.ListRequest? request = _DriveService.Files.List();
+        request.Q = $"'{parentDir.DriveFile.Id}' in parents";
         request.Fields = "files(name,webViewLink,mimeType,id)";
-        var listing = await request.ExecuteAsync();
+        FileList? listing = await request.ExecuteAsync();
 
         var files = new List<File>(listing.Files.Count);
         var tasks = new List<Task>();
-        foreach (var file in listing.Files)
+        foreach (File? file in listing.Files)
         {
+            string path = Path.Combine(parentDir.Path, file.Name);
+            if (config.IgnorePatterns != null && config.IgnorePatterns.Any(p => p.Pattern.IsMatch(path))) continue;
+            var entry = new DriveFileEntry(path, file);
             if (file.MimeType == "application/vnd.google-apps.folder")
             {
-                tasks.Add(ExploreDriveDirectory(filesByFolder, file));
+                tasks.Add(ExploreDriveDirectory(filesByFolder, entry, config));
             }
             else files.Add(file);
         }
-        filesByFolder.Add(parentDir.Name, new Folder(){DriveFolder = parentDir, Files = files});
+        filesByFolder.Add(parentDir.Path, new Folder(){DriveFolder = parentDir, Files = files});
         await Task.WhenAll(tasks);
     }
 
     private static void AddCustomLinks(Dictionary<string, Folder> folders, ServerData config)
     {
-        foreach (var link in config.Links)
+        foreach (CustomLink link in config.Links)
         {
             var linkFile = new File()
             {
                 Name = link.Name,
                 WebViewLink = link.URL
             };
-            if (folders.TryGetValue(link.FolderName, out var folder))
+            if (folders.TryGetValue(link.FolderName, out Folder? folder))
             {
                 folder.Files.Add(linkFile);
                 continue;
@@ -93,10 +96,54 @@ public static class Scraper
             folders.Add(link.FolderName, new Folder() { Files = { linkFile } });
         }
     }
-    
-    private static async Task UpdateLinkPost(SocketGuild guild, bool isManual, SocketSlashCommand? command = null)
+
+    const int _MaxEmbedsPerPost = 10;
+    private static List<Embed>[] BuildEmbeds(Dictionary<string, Folder> filesByFolder, bool isManual, ServerData config, out int neededPostCount)
     {
-        var config = ServerData.Get(guild.Id);
+        neededPostCount = (int)Math.Ceiling(filesByFolder.Count / (double)_MaxEmbedsPerPost);
+        var embeds = new List<Embed>[neededPostCount];
+
+        var description = new StringBuilder(128);
+        
+        Dictionary<string, Folder>.Enumerator filePairs = filesByFolder.GetEnumerator();
+        for (var p = 0; p < neededPostCount; p++)
+        {
+            int currentOffset = p * _MaxEmbedsPerPost;
+            int remainingEmbeds = filesByFolder.Count - currentOffset;
+            int postEmbedCount = Math.Min(remainingEmbeds, _MaxEmbedsPerPost);
+            embeds[p] = new List<Embed>(postEmbedCount);
+
+            
+            
+            for (var e = 0; e < postEmbedCount; e++)
+            {
+                filePairs.MoveNext();
+                description.Clear();
+
+                foreach (File file in filePairs.Current.Value.Files)
+                {
+                    description.AppendLine($"[{file.Name}]({file.WebViewLink})");
+                }
+                
+                embeds[p].Add(new EmbedBuilder()
+                {
+                    Title = Path.GetFileName(filePairs.Current.Key),
+                    Color = Color.Purple,
+                    Description = description.ToString(),
+                    Url = filePairs.Current.Value.DriveFolder?.DriveFile.WebViewLink,
+                    Author = new EmbedAuthorBuilder() { Name = filePairs.Current.Key },
+                    Timestamp = new DateTimeOffset(DateTime.Now),
+                    Footer = new EmbedFooterBuilder() {Text = $"Last Update: ({(isManual ? "Manual" : "Automatic")})"}
+                }.Build());
+            }
+        }
+        
+        return embeds;
+    }
+    
+    private static async Task UpdateLinkPosts(SocketGuild guild, bool isManual, SocketSlashCommand? command = null)
+    {
+        ServerData config = ServerData.Get(guild.Id);
         if (config.TargetChannel == null)
         {
             if (command != null) await command.RespondAsync("No target channel is set, use /config to set one.", ephemeral: true);
@@ -108,70 +155,66 @@ public static class Scraper
             return;
         }
         
-        var root = new File()
+        var root = new DriveFileEntry("/" ,new File()
         {
             Name = _DriveRootName,
             WebViewLink = _DriveRootLink,
             Id = _DriveRootID
-        };
+        });
         var filesByFolder = new Dictionary<string, Folder>();
-        await ExploreDriveDirectory(filesByFolder, root);
+        await ExploreDriveDirectory(filesByFolder, root, config);
         AddCustomLinks(filesByFolder, config);
-        
-        var embeds = new Embed[filesByFolder.Count];
 
-        var i = 0;
-        var description = new StringBuilder(128);
-        foreach (var (folderName, data) in filesByFolder)
+        List<Embed>[] embeds = BuildEmbeds(filesByFolder, isManual, config, out int neededPostCount);
+
+        for (var i = 0; i < neededPostCount; i++)
         {
-            description.Clear();
-            foreach (var file in data.Files)
+            if (config.LinkMessageIDs.Count > i)
             {
-                description.AppendLine($"[{file.Name}]({file.WebViewLink})");
+                IMessage message = await channel.GetMessageAsync(config.LinkMessageIDs[i]);
+                if (message != null)
+                {
+                    await ((message as IUserMessage)!).ModifyAsync(msg => msg.Embeds = embeds[i].ToArray());
+                }
+                else
+                {
+                    config.LinkMessageIDs[i] = (await channel.SendMessageAsync(embeds: embeds[i].ToArray())).Id;
+                }
             }
-            embeds[i] = new EmbedBuilder()
+            else
             {
-                Title = folderName,
-                Color = Color.Purple,
-                Description = description.ToString(),
-                Url = data.DriveFolder?.WebViewLink,
-                Timestamp = new DateTimeOffset(DateTime.Now),
-                Footer = new EmbedFooterBuilder() {Text = $"Last Update: ({(isManual ? "Manual" : "Automatic")})"}
-            }.Build();
-            i++;
+                config.LinkMessageIDs.Add((await channel.SendMessageAsync(embeds: embeds[i].ToArray())).Id);
+            }
+        }
+
+        if (neededPostCount < config.LinkMessageIDs.Count)
+        {
+            config.LinkMessageIDs.RemoveRange(neededPostCount, config.LinkMessageIDs.Count - neededPostCount);
+        }
+
+        for (int i = config.LinkMessageIDs.Count; i > neededPostCount; i--)
+        {
+            IMessage toRemove = await channel.GetMessageAsync(config.LinkMessageIDs[i - 1]);
+            if (toRemove != null) await toRemove.DeleteAsync();
+            config.LinkMessageIDs.RemoveAt(i-1);
         }
         
-        if (config.LinkMessageID != null)
-        {
-            var message = await channel.GetMessageAsync((ulong)config.LinkMessageID);
-            if (message is IUserMessage userMessage)
-            {
-                await userMessage.ModifyAsync(msg => msg.Embeds = embeds);
-                if (command!=null) await command.RespondAsync("Successfully fetched and updated existing post.", ephemeral: true);
-                config.LastUpdate = DateTime.Now;
-                await ServerData.Save(guild.Id);
-                return;
-            }
-            if (command != null) await command.RespondAsync("Warning: stored message ID cannot be found or is invalid type.");
-        }
-        
-        config.LinkMessageID = (await channel.SendMessageAsync(embeds: embeds)).Id;
         config.LastUpdate = DateTime.Now;
         await ServerData.Save(guild.Id);
-        if (command != null) await command.RespondAsync("Successfully fetched and created new post.", ephemeral: true);
+        if (command!=null) await command.RespondAsync("Successfully updated posts.", ephemeral: true);
     }
     
     public static async Task Update(SocketSlashCommand command)
     {
         var guild = (command.Channel as SocketGuildChannel)!.Guild;
-        await UpdateLinkPost(guild, true, command);
+        await UpdateLinkPosts(guild, true, command);
         var data = ServerData.Get(guild.Id);
         data.ResetTimer();
     }
 
     public static async Task Update(ulong guildID)
     {
-        await UpdateLinkPost(Program.Client!.GetGuild(guildID), false);
+        await UpdateLinkPosts(Program.Client!.GetGuild(guildID), false);
     }
     
     

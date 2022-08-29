@@ -1,6 +1,8 @@
+using Discord;
+
 namespace linkybot;
 
-public class MessageManager
+public static class MessageManager
 {
     
 }
