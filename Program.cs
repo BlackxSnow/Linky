@@ -24,8 +24,8 @@ public class Program
             if (File.Exists("./log/session.log")) File.Move("./log/session.log", "./log/session-old.log");
             
             await Log(new LogMessage(LogSeverity.Info, "Main", "Connecting to Google Drive..."));
-            Scraper.InitialiseGoogle();
-            
+            await Scraper.InitialiseGoogle();
+
             Client = new DiscordSocketClient();
             
             Client.Log += Log;

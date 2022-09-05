@@ -128,6 +128,7 @@ public class ServerData
         await Program.Log(new LogMessage(LogSeverity.Info, "ServerData.LoadAll", "Loading all server data files..."));
         foreach (var file in Directory.GetFiles("./data"))
         {
+            if (!idPattern.IsMatch(file)) continue;
             var id = ulong.Parse(idPattern.Match(file).Groups[1].Value);
             if (_LoadedGuilds.ContainsKey(id)) continue;
 

@@ -31,11 +31,11 @@ public static class Scraper
         public List<File> Files = new();
     }
     
-    public static void InitialiseGoogle()
+    public static async Task InitialiseGoogle()
     {
-        using (var stream = new FileStream("./credentials.json", FileMode.Open, FileAccess.Read))
+        await using (var stream = new FileStream("./credentials.json", FileMode.Open, FileAccess.Read))
         {
-            var secrets = GoogleClientSecrets.FromStream(stream).Secrets;
+            ClientSecrets? secrets = (await GoogleClientSecrets.FromStreamAsync(stream)).Secrets;
             var dataStore = new FileDataStore(_CredentialPath, true);
             _Credentials = GoogleWebAuthorizationBroker.AuthorizeAsync(
                 secrets,
@@ -43,6 +43,8 @@ public static class Scraper
                 "user",
                 CancellationToken.None,
                 dataStore).Result;
+            if (_Credentials.Token.IsExpired(SystemClock.Default))
+                await _Credentials.RefreshTokenAsync(CancellationToken.None);
         }
         
         Console.WriteLine("Starting service...");
@@ -151,9 +153,11 @@ public static class Scraper
         }
         if (guild.GetChannel((ulong)config.TargetChannel) is not IMessageChannel channel)
         {
-            if (command != null) await command.RespondAsync("Warning: updatechannel is not valid text channel.");
+            if (command != null) await command.RespondAsync("Warning: updatechannel is not valid text channel.", ephemeral:true);
             return;
         }
+
+        if (command != null) await command.RespondAsync("Updating, please wait...", ephemeral: true);
         
         var root = new DriveFileEntry("/" ,new File()
         {
@@ -201,7 +205,7 @@ public static class Scraper
         
         config.LastUpdate = DateTime.Now;
         await ServerData.Save(guild.Id);
-        if (command!=null) await command.RespondAsync("Successfully updated posts.", ephemeral: true);
+        // if (command!=null) await command.RespondAsync("Successfully updated posts.", ephemeral: true);
     }
     
     public static async Task Update(SocketSlashCommand command)
